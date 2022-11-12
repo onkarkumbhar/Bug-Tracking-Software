@@ -1,11 +1,10 @@
-from crypt import methods
-import mysql.connector
 from flask import *
+import sqlite3
 
 app = Flask(__name__)
 
-conn = mysql.connector.connect(host="localhost",user="onkar",password="***********",database="dbms_mini_project")
-mycursor = conn.cursor()
+mycursor = sqlite3.connect("application.db",check_same_thread=False)
+
 ######################## Functions
 def check_login(token,page):
     if token!='1':
@@ -40,16 +39,16 @@ def register():
         query = 'insert into Employee values("'+emp_id+'","'+comp_email+'","'+comp_id+'","'+password+'");'
         try:
             mycursor.execute(query)
-            conn.commit()
+            mycursor.commit()
             query = 'update Company set employee_count = employee_count+1 where company_id = "'+comp_id+'";'
             mycursor.execute(query)
-            conn.commit()
+            mycursor.commit()
             return """<script>function Redirect() {
                window.location = "/login.html";
             }            
             document.write("You will be redirected to login page in 10 sec.");
             setTimeout('Redirect()', 5000);</script>"""
-        except mysql.connector.errors.IntegrityError or mysql.connector.errors.get_mysql_exception:
+        except sqlite3.Error as er:
             return render_template("register.html",error="Please chack your credentials. Something went wrong!!!")
 
 @app.route("/login.html", methods=['GET', 'POST'])
@@ -61,15 +60,14 @@ def login():
         comp_id = request.form['comp_id']
         password = request.form['password']
         query = 'select employee_id,pass from Employee where employee_id="'+emp_id+'" and pass="'+password+'" and company_id="'+comp_id+'";'
-        mycursor.execute(query)
-        data = mycursor.fetchall()
-        if len(data)==0:
-            return render_template("login.html",error="Wrong Credentials")
-        if data[0][0]==emp_id and data[0][1]==password:
-            resp = make_response(render_template("redirect.html"))
-            resp.set_cookie('Emplaoyee_login','1')
-            resp.set_cookie('Company_id',comp_id)
-            return resp
+        data = mycursor.execute(query)
+        for row in data:
+            if row[0] == emp_id and row[1] == password:
+                resp = make_response(render_template("redirect.html"))
+                resp.set_cookie('Emplaoyee_login','1')
+                resp.set_cookie('Company_id',comp_id)
+                return resp
+        return render_template("login.html",error="Wrong Credentials")
         
 
 @app.route("/createbug.html",methods=['GET', 'POST'])
@@ -91,13 +89,13 @@ def createbug():
         query = 'insert into Bug_Track values("'+bug_id+'","'+bug_steps+'","'+bug_link+'","'+bug_ststus+'","'+comp_id+'","'+emp_id+'","'+model_id+'");'
         try:
             mycursor.execute(query)
-            conn.commit()
+            mycursor.commit()
             return """<script>function Redirect() {
                window.location = "/dashboard.html";
             }            
             document.write("You will be redirected to dashboard page in 10 sec.");
             setTimeout('Redirect()', 5000);</script>"""
-        except mysql.connector.errors.IntegrityError or mysql.connector.errors.get_mysql_exception:
+        except sqlite3.Error as er:
             return render_template("createbug.html",error="Please enter correct details. Something went wrong!!!")
 
 @app.route("/updatebug.html",methods=['GET', 'POST'])
@@ -115,13 +113,13 @@ def updatebug():
         query = 'update Bug_Track set bug_status="'+bug_status+'" where model_id="'+model_id+'" and bug_id="'+bug_id+'";'
         try:
             mycursor.execute(query)
-            conn.commit()
+            mycursor.commit()
             return """<script>function Redirect() {
                window.location = "/dashboard.html";
             }            
             document.write("You will be redirected to dashboard page in 10 sec.");
             setTimeout('Redirect()', 5000);</script>"""
-        except mysql.connector.errors.IntegrityError or mysql.connector.errors.get_mysql_exception:
+        except sqlite3.Error as er:
             return render_template("createbug.html",error="Please enter correct details. Something went wrong!!!")
 
 @app.route("/viewbugsemp.html")
@@ -132,9 +130,11 @@ def viewbugsemp():
         return val
     comp_id = request.cookies.get('Company_id')
     query = 'select * from Bug_Track where company_id="'+comp_id+'";'
-    mycursor.execute(query)
-    data = mycursor.fetchall()
-    return write_file(data,'/dashboard_employee.html')
+    data = mycursor.execute(query)
+    out = []
+    for row in data:
+        out.append(row)
+    return write_file(out,'/dashboard_employee.html')
 
 
 @app.route("/dashboard.html")
@@ -163,13 +163,14 @@ def register_company():
         query = 'insert into Company values("'+comp_id+'","'+comp_name+'","'+comp_email+'",0,"'+password+'");'
         try:
             mycursor.execute(query)
-            conn.commit()
+            mycursor.commit()
             return """<script>function Redirect() {
                window.location = "/login_company.html";
             }            
             document.write("You will be redirected to login page in 10 sec.");
             setTimeout('Redirect()', 5000);</script>"""
-        except mysql.connector.errors.IntegrityError or mysql.connector.errors.get_mysql_exception:
+        except sqlite3.Error as er:
+            print(er)
             return render_template("register_company.html",error="Please chack your credentials. Something went wrong!!!")
 
 @app.route("/login_company.html",methods=['GET', 'POST'])
@@ -180,15 +181,15 @@ def login_company():
         comp_id = request.form['ID']
         password = request.form['password']
         query = 'select company_id,password_comp from Company where company_id="'+comp_id+'" and password_comp="'+password+'";'
-        mycursor.execute(query)
-        data = mycursor.fetchall()
-        if len(data)==0:
-            return render_template("login_company.html",error="Wrong Credentials")
-        if data[0][0]==comp_id and data[0][1]==password:
-            resp = make_response(render_template("dashboard_company.html"))
-            resp.set_cookie('Company_login','1')
-            resp.set_cookie('Company_id',comp_id)
-            return resp
+        data = mycursor.execute(query)
+
+        for row in data:
+            if row[0] == comp_id and row[1] == password:
+                resp = make_response(render_template("dashboard_company.html"))
+                resp.set_cookie('Company_login','1')
+                resp.set_cookie('Company_id',comp_id)
+                return resp
+        return render_template("login_company.html",error="Wrong Credentials")
 
 @app.route("/dashboard_company.html")
 def dashboard_company():
@@ -203,9 +204,11 @@ def viewemployee():
         return val
     comp_id = request.cookies.get('Company_id')
     query = 'select employee_id,employee_email from Employee where company_id="'+comp_id+'";'
-    mycursor.execute(query)
-    data = mycursor.fetchall()
-    return write_file(data,"/dashboard_company.html")
+    data = mycursor.execute(query)
+    out = []
+    for row in data:
+        out.append(row)
+    return write_file(out,"/dashboard_company.html")
     
 
 @app.route("/removeemployee.html", methods=['GET', 'POST'])
@@ -223,9 +226,9 @@ def removeemployee():
         query = 'delete from Employee where employee_id="'+emp_id+'" and company_id="'+comp_id+'";'
         try:
             mycursor.execute(query)
-            conn.commit()
+            mycursor.commit()
             return render_template("removeemployee.html",error="Employee removed")
-        except mysql.connector.errors.IntegrityError or mysql.connector.errors.get_mysql_exception:
+        except sqlite3.Error as er:
             return render_template("removeemployee.html",error="Employee Linked to different tables. Please contact support!!!")
 
 @app.route("/viewbugs.html", methods=['GET', 'POST'])
@@ -236,9 +239,11 @@ def viewbugs():
         return val
     comp_id = request.cookies.get('Company_id')
     query = 'select * from Bug_Track where company_id="'+comp_id+'";'
-    mycursor.execute(query)
-    data = mycursor.fetchall()
-    return write_file(data,"/dashboard_company.html")
+    data = mycursor.execute(query)
+    out = []
+    for row in data:
+        out.append(row)
+    return write_file(out,"/dashboard_company.html")
 
 @app.route("/addmodel.html", methods=['GET', 'POST'])
 def addmodel():
@@ -255,9 +260,9 @@ def addmodel():
         query = 'insert into Models values("'+model_id+'","'+model_name+'","'+comp_id+'",0);'
         try:
             mycursor.execute(query)
-            conn.commit()
+            mycursor.commit()
             return render_template("addmodel.html",error="Module added")
-        except mysql.connector.errors.IntegrityError or mysql.connector.errors.get_mysql_exception:
+        except sqlite3.Error as er:
             return render_template("addmodel.html",error="Please chack your model id. Contact Support!!!")
 
 @app.route("/viewmodels.html", methods=['GET', 'POST'])
@@ -268,9 +273,11 @@ def viewmodels():
         return val
     comp_id = request.cookies.get('Company_id')
     query = 'select * from Models where company_id="'+comp_id+'";'
-    mycursor.execute(query)
-    data = mycursor.fetchall()
-    return write_file(data,"/dashboard_company.html")
+    data = mycursor.execute(query)
+    out = []
+    for row in data:
+        out.append(row)
+    return write_file(out,"/dashboard_company.html")
 
 @app.route("/removemodel.html", methods=['GET', 'POST'])
 def removemodel():
@@ -287,9 +294,9 @@ def removemodel():
         query = 'delete from Models where model_id="'+model_id+'" and company_id="'+comp_id+'";'
         try:
             mycursor.execute(query)
-            conn.commit()
+            mycursor.commit()
             return render_template("removemodel.html",error="Model removed")
-        except mysql.connector.errors.IntegrityError or mysql.connector.errors.get_mysql_exception:
+        except sqlite3.Error as er:
             return render_template("removemodel.html",error="Model Linked to bug table. Please contact support!!!")
 
 if __name__ == "__main__":
